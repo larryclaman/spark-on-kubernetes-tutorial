@@ -9,9 +9,9 @@ In order to complete the steps within this article, you need the following.
 * An Azure VM running Ubuntu
 * Basic understanding of Kubernetes and [Apache Spark][spark-quickstart].
 * [Docker Hub][docker-hub] account, or an [Azure Container Registry][acr-create].
-* Azure CLI [installed][azure-cli] on your development system.
-* [JDK 8][java-install] installed on your system.
-* SBT ([Scala Build Tool][sbt-install]) installed on your system.
+* Azure CLI [installed][azure-cli] on your development system. 
+* [JDK 8][java-install] installed on your system. (optional)
+* SBT ([Scala Build Tool][sbt-install]) installed on your system. (optional)
 * Git command-line tools installed on your system.
 
 ## Create an AKS cluster
@@ -42,15 +42,31 @@ If you are using Azure Container Registry (ACR) to store container images, confi
 
 ## Install Spark on your VM
 
-Install spark on your vm per the instructions https://spark.apache.org/downloads.html
+Install spark on your vm per the instructions here: https://spark.apache.org/downloads.html
 
-## Spark image
-The spark image can be found at https://cloud.docker.com/u/larryms/repository/docker/larryms/spark
-
+This will be used to run the spark client, which is used to submit jobs.
 
 ## Prepare a Spark job
 
-Next, prepare a Spark job. A jar file is used to hold the Spark job and is needed when running the `spark-submit` command. The jar can be made accessible through a public URL or pre-packaged within a container image. In this example, a sample jar is created to calculate the value of Pi. This jar is then uploaded to Azure storage. If you have an existing jar, feel free to substitute
+Next, prepare a Spark job. A jar file is used to hold the Spark job and is needed when running the `spark-submit` command. The jar can be made accessible through a public URL or pre-packaged within a container image. For this example, you can either use a pre-created jar file, or you can create one from scratch.   (If you have an existing jar, feel free to substitute.)
+
+### Option 1: Pre-created jar file
+A sample jar with a Sparkpi job can be found at: https://docs.azuredatabricks.net/_static/libs/SparkPi-assembly-0.1.jar
+
+This jar file runs a sample spark job that calculates digits of PI.
+
+In your bash shell, run:
+```bash
+jarUrl="https://docs.azuredatabricks.net/_static/libs/SparkPi-assembly-0.1.jar"
+```
+
+Variable `jarUrl` now contains the publicly accessible path to the jar file.
+
+Now jump ahead to [Submit a Spark job](#submit-a-spark-job)
+
+### Option 2:  Create a new jar file
+
+In this example, a sample jar is created to calculate the value of Pi. This jar is then uploaded to Azure storage. If you have an existing jar, feel free to substitute
 
 Create a directory where you would like to create the project for a Spark job.
 
@@ -114,7 +130,7 @@ After successful packaging, you should see output similar to the following.
 [success] Total time: 10 s, completed Mar 6, 2018 11:07:54 AM
 ```
 
-## Copy job to storage
+#### Copy job to storage
 
 Create an Azure storage account and container to hold the jar file.
 
@@ -146,27 +162,46 @@ jarUrl=$(az storage blob url --container-name $CONTAINER_NAME --name $BLOB_NAME 
 Variable `jarUrl` now contains the publicly accessible path to the jar file.
 
 
-## ALternative:
-use sparkpi url of https://docs.azuredatabricks.net/_static/libs/SparkPi-assembly-0.1.jar
-
 ## Submit a Spark job
 
-Create role:
 
+### Prepare Kubernetes context
+If you haven't already done so, ensure that you can reach your Kubernetes cluster:
+```
+kubectl get nodes
+```
+
+You next need to add a service account and role to the Kubernetes cluster:
+
+```
 kubectl create serviceaccount spark
 kubectl create clusterrolebinding spark-role --clusterrole=edit --serviceaccount=default:spark --namespace=default
+```
 
-Start kube-proxy in a separate command-line with the following code.
+### Start Kubernetes proxy
+Start kube-proxy in a **separate command-line** with the following code.
 
 ```bash
 kubectl proxy
 ```
 
-Navigate back to the root of Spark repository.
+In the first window, navigate back to the root of Spark repository.
 
 ```bash
 cd $sparkdir
 ```
+
+
+#### Spark Docker image
+The spark image can be found at https://cloud.docker.com/u/larryms/repository/docker/larryms/spark
+
+Run the follwoing in bash to store the image info in variables:
+```bash
+REGISTRY_NAME=larryms
+REGISTRY_TAG=v1
+```
+
+
 
 Submit the job using `spark-submit`.
 
@@ -194,7 +229,7 @@ spark-pi-2232778d0f663768ab27edc35cb73040-exec-2   0/1       Init:0/1   0       
 spark-pi-2232778d0f663768ab27edc35cb73040-exec-3   0/1       Init:0/1   0          4s
 ```
 
-While the job is running, you can also access the Spark UI. In the second terminal session, use the `kubectl port-forward` command provide access to Spark UI.
+While the job is running, you can also access the Spark UI. In the third terminal session, use the `kubectl port-forward` command provide access to Spark UI.
 
 ```bash
 kubectl port-forward spark-pi-2232778d0f663768ab27edc35cb73040-driver 4040:4040
@@ -233,9 +268,9 @@ Pi is roughly 3.152155760778804
 
 ## Package jar with container image
 
-In the above example, the Spark jar file was uploaded to Azure storage. Another option is to package the jar file into custom-built Docker images.
+In the above example, the Spark jar file was uploaded to Azure storage or pulled from a website. Another option is to package the jar file into your own custom-built Docker images.
 
-To do so, find the `dockerfile` for the Spark image located at `$sparkdir/resource-managers/kubernetes/docker/src/main/dockerfiles/spark/` directory. Add am `ADD` statement for the Spark job `jar` somewhere between `WORKDIR` and `ENTRYPOINT` declarations.
+To do so, find the `dockerfile` for the Spark image located at `$sparkdir/resource-managers/kubernetes/docker/src/main/dockerfiles/spark/` directory. Add an `ADD` statement for the Spark job `jar` somewhere between `WORKDIR` and `ENTRYPOINT` declarations.
 
 Update the jar path to the location of the `SparkPi-assembly-0.1.0-SNAPSHOT.jar` file on your development system. You can also use your own custom jar file.
 
@@ -266,15 +301,15 @@ When running the job, instead of indicating a remote jar URL, the `local://` sch
     --conf spark.kubernetes.container.image=<spark-image> \
     local:///opt/spark/work-dir/<your-jar-name>.jar
 ```
-
-> [!WARNING]
+# FIN
+> [NOTE]
 > From Spark [documentation][spark-docs]: "The Kubernetes scheduler is currently experimental. In future versions, there may be behavioral changes around configuration, container images and entrypoints".
 
 ## Next steps
 
 Check out Spark documentation for more details.
 
-> [!div class="nextstepaction"]
+
 > [Spark documentation][spark-docs]
 
 <!-- LINKS - external -->
