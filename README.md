@@ -6,6 +6,7 @@
 
 In order to complete the steps within this article, you need the following.
 
+* An Azure VM running Ubuntu
 * Basic understanding of Kubernetes and [Apache Spark][spark-quickstart].
 * [Docker Hub][docker-hub] account, or an [Azure Container Registry][acr-create].
 * Azure CLI [installed][azure-cli] on your development system.
@@ -39,51 +40,13 @@ az aks get-credentials --resource-group mySparkCluster --name mySparkCluster
 
 If you are using Azure Container Registry (ACR) to store container images, configure authentication between AKS and ACR. See the [ACR authentication documentation][acr-aks] for these steps.
 
-## Build the Spark source
+## Install Spark on your VM
 
-Before running Spark jobs on an AKS cluster, you need to build the Spark source code and package it into a container image. The Spark source includes scripts that can be used to complete this process.
+Install spark on your vm per the instructions https://spark.apache.org/downloads.html
 
-Clone the Spark project repository to your development system.
+## Spark image
+The spark image can be found at https://cloud.docker.com/u/larryms/repository/docker/larryms/spark
 
-```bash
-git clone -b branch-2.3 https://github.com/apache/spark
-```
-
-Change into the directory of the cloned repository and save the path of the Spark source to a variable.
-
-```bash
-cd spark
-sparkdir=$(pwd)
-```
-
-If you have multiple JDK versions installed, set `JAVA_HOME` to use version 8 for the current session.
-
-```bash
-export JAVA_HOME=`/usr/libexec/java_home -d 64 -v "1.8*"`
-```
-
-Run the following command to build the Spark source code with Kubernetes support.
-
-```bash
-./build/mvn -Pkubernetes -DskipTests clean package
-```
-
-The following commands create the Spark container image and push it to a container image registry. Replace `registry.example.com` with the name of your container registry and `v1` with the tag you prefer to use. If using Docker Hub, this value is the registry name. If using Azure Container Registry (ACR), this value is the ACR login server name.
-
-```bash
-REGISTRY_NAME=registry.example.com
-REGISTRY_TAG=v1
-```
-
-```bash
-./bin/docker-image-tool.sh -r $REGISTRY_NAME -t $REGISTRY_TAG build
-```
-
-Push the container image to your container image registry.
-
-```bash
-./bin/docker-image-tool.sh -r $REGISTRY_NAME -t $REGISTRY_TAG push
-```
 
 ## Prepare a Spark job
 
