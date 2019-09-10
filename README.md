@@ -145,6 +145,10 @@ jarUrl=$(az storage blob url --container-name $CONTAINER_NAME --name $BLOB_NAME 
 
 Variable `jarUrl` now contains the publicly accessible path to the jar file.
 
+
+## ALternative:
+use sparkpi url of https://docs.azuredatabricks.net/_static/libs/SparkPi-assembly-0.1.jar
+
 ## Submit a Spark job
 
 Start kube-proxy in a separate command-line with the following code.
