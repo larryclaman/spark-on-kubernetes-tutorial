@@ -10,7 +10,11 @@ In order to complete the steps within this article, you need the following.
 * Basic understanding of Kubernetes and [Apache Spark][spark-quickstart].
 * [Docker Hub][docker-hub] account, or an [Azure Container Registry][acr-create].
 * Azure CLI [installed][azure-cli] on your development system. 
-* [JDK 8][java-install] installed on your system. (optional)
+* [JDK 8][java-install] installed on your system. 
+```
+sudo apt-get update
+sudo apt-get install openjdk-8-jdk-headless
+```
 * SBT ([Scala Build Tool][sbt-install]) installed on your system. (optional)
 * Git command-line tools installed on your system.
 
