@@ -151,6 +151,11 @@ use sparkpi url of https://docs.azuredatabricks.net/_static/libs/SparkPi-assembl
 
 ## Submit a Spark job
 
+Create role:
+
+kubectl create serviceaccount spark
+kubectl create clusterrolebinding spark-role --clusterrole=edit --serviceaccount=default:spark --namespace=default
+
 Start kube-proxy in a separate command-line with the following code.
 
 ```bash
@@ -173,6 +178,7 @@ Submit the job using `spark-submit`.
   --class org.apache.spark.examples.SparkPi \
   --conf spark.executor.instances=3 \
   --conf spark.kubernetes.container.image=$REGISTRY_NAME/spark:$REGISTRY_TAG \
+  --conf spark.kubernetes.authenticate.driver.serviceAccountName=spark \
   $jarUrl
 ```
 
