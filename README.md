@@ -9,10 +9,12 @@ In order to complete the steps within this article, you need the following.
 * An Azure VM running Ubuntu
 * Basic understanding of Kubernetes and [Apache Spark][spark-quickstart].
 * [Docker Hub][docker-hub] account, or an [Azure Container Registry][acr-create].
-* Azure CLI [installed][azure-cli] on your development system. 
-* [JDK 8][java-install] installed on your system. 
+* Azure CLI [installed][azure-cli] on your development system.  See below:
 ```
-sudo apt-get update
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+```
+* **JDK 8** installed on your system.  See below:
+```
 sudo apt-get install openjdk-8-jdk-headless
 ```
 * SBT ([Scala Build Tool][sbt-install]) installed on your system. (optional)
@@ -44,11 +46,50 @@ az aks get-credentials --resource-group mySparkCluster --name mySparkCluster
 
 If you are using Azure Container Registry (ACR) to store container images, configure authentication between AKS and ACR. See the [ACR authentication documentation][acr-aks] for these steps.
 
-## Install Spark on your VM
+## Install Spark on your VM & build spark container
 
-Install spark on your vm per the instructions here: https://spark.apache.org/downloads.html
+### Build the Spark source
 
-This will be used to run the spark client, which is used to submit jobs.
+Before running Spark jobs on an AKS cluster, you need to build the Spark source code and package it into a container image. The Spark source includes scripts that can be used to complete this process.
+
+Clone the Spark project repository to your development system.
+
+```bash
+git clone https://github.com/apache/spark
+```
+
+Change into the directory of the cloned repository and save the path of the Spark source to a variable.
+
+```bash
+cd spark
+sparkdir=$(pwd)
+```
+
+
+Run the following command to build the Spark source code with Kubernetes support.  **NOTE:  This may take quite a while to complete!**
+
+```bash
+./build/mvn -Pkubernetes -DskipTests clean package
+```
+
+The following commands create the Spark container image and push it to a container image registry. Replace `registry.example.com` with the name of your container registry and `v1` with the tag you prefer to use. If using Docker Hub, this value is the registry name. If using Azure Container Registry (ACR), this value is the ACR login server name.
+
+```bash
+REGISTRY_NAME=registry.example.com
+REGISTRY_TAG=v1
+```
+
+```bash
+./bin/docker-image-tool.sh -r $REGISTRY_NAME -t $REGISTRY_TAG build
+```
+
+Push the container image to your container image registry.
+
+```bash
+./bin/docker-image-tool.sh -r $REGISTRY_NAME -t $REGISTRY_TAG push
+```
+
+
 
 ## Prepare a Spark job
 
