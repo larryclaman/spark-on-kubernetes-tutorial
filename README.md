@@ -8,21 +8,37 @@ In order to complete the steps within this article, you need the following.
 
 * An Azure VM running Ubuntu
 * Basic understanding of Kubernetes and [Apache Spark][spark-quickstart].
-* [Docker Hub][docker-hub] account, or an [Azure Container Registry][acr-create].
-* Azure CLI [installed][azure-cli] on your development system. 
-* [JDK 8][java-install] installed on your system. 
+* An [Azure Container Registry][acr-create].
+* Azure CLI [installed][azure-cli] on your development system.  See below:
 ```
-sudo apt-get update
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+```
+* **JDK 8** installed on your system.  See below:
+```
 sudo apt-get install openjdk-8-jdk-headless
 ```
-* SBT ([Scala Build Tool][sbt-install]) installed on your system. (optional)
+* SBT ([Scala Build Tool][sbt-install]) installed on your system.
+```
+echo "deb https://dl.bintray.com/sbt/debian /" | sudo tee -a /etc/apt/sources.list.d/sbt.list
+sudo apt-key adv --keyserver hkps://keyserver.ubuntu.com:443 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
+sudo apt-get update
+sudo apt-get install sbt
+```
 * Git command-line tools installed on your system.
+* Docker installed on your system.  Example:
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+```
 
 ## Create an AKS cluster
 
 Spark is used for large-scale data processing and requires that Kubernetes nodes are sized to meet the Spark resources requirements. We recommend a minimum size of `Standard_D3_v2` for your Azure Kubernetes Service (AKS) nodes.
 
 If you need an AKS cluster that meets this minimum recommendation, run the following commands.
+
+<details>
+<summary>Create an AKS cluster</summary>
 
 Create a resource group for the cluster.
 
@@ -36,19 +52,87 @@ Create the AKS cluster with nodes that are of size `Standard_D3_v2`.
 az aks create --resource-group mySparkCluster --name mySparkCluster --node-vm-size Standard_D3_v2
 ```
 
+</details>
+
 Connect to the AKS cluster.
 
 ```azurecli
 az aks get-credentials --resource-group mySparkCluster --name mySparkCluster
 ```
 
-If you are using Azure Container Registry (ACR) to store container images, configure authentication between AKS and ACR. See the [ACR authentication documentation][acr-aks] for these steps.
+Install kubectl:
+```
+sudo az aks install-cli
+```
 
-## Install Spark on your VM
 
-Install spark on your vm per the instructions here: https://spark.apache.org/downloads.html
+IMPORTANT: If you are using Azure Container Registry (ACR) to store container images, configure authentication between AKS and ACR. See the [ACR authentication documentation][acr-aks] for these steps:
+```
+ACR_NAME=<myacrinstance>  # replace with your acr name
+SERVICE_PRINCIPAL_NAME=<youriniitals>-acr-service-principal
 
-This will be used to run the spark client, which is used to submit jobs.
+# Populate the ACR login server and resource id.
+ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer --output tsv)
+ACR_REGISTRY_ID=$(az acr show --name $ACR_NAME --query id --output tsv)
+
+# Create acrpull role assignment with a scope of the ACR resource.
+SP_PASSWD=$(az ad sp create-for-rbac --name http://$SERVICE_PRINCIPAL_NAME --role acrpull --scopes $ACR_REGISTRY_ID --query password --output tsv)
+echo "Service principal password: $SP_PASSWD"
+echo "Make sure this is set!!"
+sleep 20
+
+# Get the service principal client id.
+CLIENT_ID=$(az ad sp show --id http://$SERVICE_PRINCIPAL_NAME --query appId --output tsv)
+
+# Output used when creating Kubernetes secret.
+echo "Service principal ID: $CLIENT_ID"
+
+```
+
+## Install Spark on your VM & build spark container
+
+### Build the Spark source
+
+Before running Spark jobs on an AKS cluster, you need to build the Spark source code and package it into a container image. The Spark source includes scripts that can be used to complete this process.
+
+Clone the Spark project repository to your development system.
+
+```bash
+git clone https://github.com/apache/spark
+```
+
+Change into the directory of the cloned repository and save the path of the Spark source to a variable.
+
+```bash
+cd spark
+sparkdir=$(pwd)
+```
+
+
+Run the following command to build the Spark source code with Kubernetes support.  **NOTE:  This may take quite a while to complete! (15-30 min or longer)**
+
+```bash
+./build/mvn -Pkubernetes -DskipTests clean package
+```
+
+The following commands create the Spark container image and push it to a container image registry. Replace `registry.example.com` with the name of your container registry and `v1` with the tag you prefer to use. If using Docker Hub, this value is the registry name. If using Azure Container Registry (ACR), this value is the ACR login server name.
+
+```bash
+REGISTRY_NAME=registry.example.com
+REGISTRY_TAG=v1
+```
+
+```bash
+./bin/docker-image-tool.sh -r $REGISTRY_NAME -t $REGISTRY_TAG build
+```
+
+Push the container image to your container image registry.
+
+```bash
+./bin/docker-image-tool.sh -r $REGISTRY_NAME -t $REGISTRY_TAG push
+```
+
+
 
 ## Prepare a Spark job
 
@@ -116,7 +200,7 @@ cat <<EOT >> build.sbt
 libraryDependencies += "org.apache.spark" %% "spark-sql" % "2.3.0" % "provided"
 EOT
 
-sed -ie 's/scalaVersion.*/scalaVersion := "2.11.11",/' build.sbt
+sed -ie 's/scalaVersion.*/scalaVersion := "2.11.11"/' build.sbt
 sed -ie 's/name.*/name := "SparkPi",/' build.sbt
 ```
 
@@ -160,7 +244,7 @@ az storage container set-permission --name $CONTAINER_NAME --public-access blob
 echo "Uploading the file..."
 az storage blob upload --container-name $CONTAINER_NAME --file $FILE_TO_UPLOAD --name $BLOB_NAME
 
-jarUrl=$(az storage blob url --container-name $CONTAINER_NAME --name $BLOB_NAME | tr -d '"')
+jarUrl=$(az storage blob url --container-name $CONTAINER_NAME --name $BLOB_NAME --output json| tr -d '"')
 ```
 
 Variable `jarUrl` now contains the publicly accessible path to the jar file.
@@ -196,10 +280,21 @@ cd $sparkdir
 ```
 
 
-#### Spark Docker image
+### Spark Docker image
+You have two options:  You can use the image you have just built, or you can a prebuild docker image.
+
+#### Option 1:  Use your image
+Run the following in bash to store the image info in variables:
+```bash
+REGISTRY_NAME=<your registry>  # example:  larrysreg.azurecr.io
+REGISTRY_TAG=<your tag>
+```
+
+#### Option 2:  Use pre-made image
+
 The spark image can be found at https://cloud.docker.com/u/larryms/repository/docker/larryms/spark
 
-Run the follwoing in bash to store the image info in variables:
+Run the following in bash to store the image info in variables:
 ```bash
 REGISTRY_NAME=larryms
 REGISTRY_TAG=v1
