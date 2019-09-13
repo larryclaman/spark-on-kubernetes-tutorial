@@ -37,6 +37,9 @@ Spark is used for large-scale data processing and requires that Kubernetes nodes
 
 If you need an AKS cluster that meets this minimum recommendation, run the following commands.
 
+<details>
+<summary>Create an AKS cluster</summary>
+
 Create a resource group for the cluster.
 
 ```azurecli
@@ -48,6 +51,8 @@ Create the AKS cluster with nodes that are of size `Standard_D3_v2`.
 ```azurecli
 az aks create --resource-group mySparkCluster --name mySparkCluster --node-vm-size Standard_D3_v2
 ```
+
+</details>
 
 Connect to the AKS cluster.
 
